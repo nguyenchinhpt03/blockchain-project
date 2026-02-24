@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web3 Daily Check-in</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    
+    <style>
+        body { 
+            font-family: 'Poppins', sans-serif; 
+            margin: 0; 
+            min-height: 100vh; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            background: linear-gradient(135deg, #0f2027, #203a43, #2c5364); 
+            color: white;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 40px 30px;
+            border-radius: 20px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.5);
+            text-align: center;
+            width: 380px;
+        }
+        h2 { margin-top: 0; font-size: 28px; background: -webkit-linear-gradient(#00f2fe, #4facfe); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .info-box { background: rgba(0, 0, 0, 0.3); padding: 15px; border-radius: 12px; margin-bottom: 20px; font-size: 14px; }
+        .balance-box { font-size: 26px; font-weight: bold; color: #f5a623; margin: 5px 0; text-shadow: 0 0 10px rgba(245,166,35,0.4); }
+        .pool-box { color: #00ff88; font-size: 13px; margin-top: 10px; font-weight: bold; border-top: 1px dashed rgba(255,255,255,0.2); padding-top: 10px; }
+        button { width: 100%; padding: 14px; border: none; border-radius: 10px; font-size: 16px; font-weight: bold; cursor: pointer; transition: all 0.3s ease; margin-bottom: 15px; text-transform: uppercase; }
+        .btn-connect { background: linear-gradient(45deg, #f6d365 0%, #fda085 100%); color: #333; }
+        .btn-connect:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(253,160,133,0.4); }
+        .btn-checkin { background: linear-gradient(45deg, #00b09b, #96c93d); color: white; }
+        .btn-checkin:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,176,155,0.4); }
+        button:disabled { background: #555; color: #888; cursor: not-allowed; box-shadow: none; transform: none; }
+        #status { font-size: 13px; color: #a8b2d1; margin-top: 10px; min-height: 20px; font-weight: 500;}
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>🚀 DAILY CHECK-IN</h2>
+    
+    <div class="info-box">
+        <div id="account">🦊 Status: Not Connected</div>
+        <div class="balance-box" id="tokenBalance">0.00 CHK</div>
+        <div style="color: #bbb; font-size: 12px;">(Reward: 10 CHK / day)</div>
+        
+        <div class="pool-box" id="poolBalance">
+            Pool Balance: Loading... / 100,000,000 CHK
+        </div>
+    </div>
+
+    <button id="btnConnect" class="btn-connect">Connect Metamask</button>
+    <button id="btnCheckin" class="btn-checkin" disabled>Claim Reward Today</button>
+    
+    <div id="status">Please connect your wallet to continue...</div>
+</div>
+
+<script>
+    const CONTRACT_ADDRESS = "0x23Ef598bfc94af40D272C1DCa9Cd7e6EB5A912ee"; 
+    const SUPABASE_URL = "https://gqftgzlunaianfofmznt.supabase.co";
+    const SUPABASE_KEY = "sb_publishable_id0qZ9sN4Ac0oM65b8BOew_NCh27YcM";
+
+    const ABI = [
+        "function checkIn() public",
+        "function balanceOf(address account) public view returns (uint256)",
+        "function decimals() public view returns (uint8)",
+        "function lastCheckInTimestamp(address) public view returns (uint256)",
+        "function getPoolBalance() public view returns (uint256)" 
+    ];
+
+    let supabaseClient;
+    try { supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY); } 
+    catch (err) { console.error("Database Error:", err); }
+
+    let signer, contract, userAddress;
+
+    const btnConnect = document.getElementById('btnConnect');
+    const btnCheckin = document.getElementById('btnCheckin');
+    const statusText = document.getElementById('status');
+    const accountText = document.getElementById('account');
+    const balanceText = document.getElementById('tokenBalance');
+    const poolText = document.getElementById('poolBalance');
+
+    async function updateBalance() {
+        if(contract && userAddress) {
+            try {
+                const bal = await contract.balanceOf(userAddress);
+                const dec = await contract.decimals();
+                const formattedBal = window.ethers.utils.formatUnits(bal, dec);
+                balanceText.innerText = `${formattedBal} CHK`;
+
+                const poolBal = await contract.getPoolBalance();
+                const formattedPoolBal = window.ethers.utils.formatUnits(poolBal, dec);
+                const poolString = Number(formattedPoolBal).toLocaleString('en-US'); 
+                poolText.innerText = `Pool Balance: ${poolString} / 100,000,000 CHK`;
+            } catch (err) { console.error(err); }
+        }
+    }
+
+    // KẾT NỐI VÍ
+    btnConnect.onclick = async () => {
+        if (!window.ethereum) {
+            Swal.fire({ icon: 'warning', title: 'Metamask Missing', text: 'Please install Metamask extension!', background: '#1a1a2e', color: '#fff' });
+            return;
+        }
+        try {
+            statusText.innerText = "⏳ Please open Metamask to connect...";
+            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+            userAddress = accounts[0];
+            
+            const provider = new window.ethers.providers.Web3Provider(window.ethereum);
+            signer = provider.getSigner();
+            contract = new window.ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+            
+            accountText.innerText = "🦊 Wallet: " + userAddress.substring(0,5) + "..." + userAddress.substring(38);
+            await updateBalance(); 
+
+            btnCheckin.disabled = false;
+            btnConnect.innerText = "Connected";
+            btnConnect.style.background = "#444";
+            btnConnect.style.color = "#fff";
+            statusText.innerText = "✅ Connected successfully! Ready to claim.";
+            
+        } catch (error) { 
+            statusText.innerText = "❌ Connection failed: User rejected or network error."; 
+        }
+    };
+
+    btnCheckin.onclick = async () => {
+        try {
+            statusText.innerText = "⏳ Please click 'Confirm' in Metamask...";
+            statusText.style.color = "#a8b2d1";
+            btnCheckin.disabled = true; 
+
+            const tx = await contract.checkIn();
+            
+            Swal.fire({
+                title: 'Processing...',
+                text: 'Waiting for blockchain confirmation (~10s)',
+                allowOutsideClick: false,
+                background: '#1a1a2e', color: '#fff',
+                didOpen: () => { Swal.showLoading() }
+            });
+
+            await tx.wait(); 
+            await updateBalance();
+
+            const { error } = await supabaseClient.from('checkin_logs').insert([{ user_address: userAddress }]);
+            if (error) throw error;
+            
+            statusText.innerText = "🎉 SUCCESS!";
+            statusText.style.color = "#00ff88";
+            
+            Swal.fire({
+                icon: 'success',
+                title: 'SUCCESS! 🎉',
+                text: 'You have received 10 CHK.',
+                background: '#1a1a2e', color: '#fff', confirmButtonColor: '#00b09b'
+            });
+            
+        } catch (error) {
+            console.error(error);
+            btnCheckin.disabled = false; 
+            
+            let errorMsg = "Transaction failed or network error!";
+            let errorString = error.reason || (error.data && error.data.message) || error.message;
+
+            if (error.code === 4001) {
+                errorMsg = "You rejected the transaction in Metamask.";
+            } else if (errorString) {
+                if (errorString.includes("cuoi tuan") || errorString.includes("weekend")) {
+                    errorMsg = "Check-in is NOT allowed during the weekend!";
+                } else if (errorString.includes("hom nay roi") || errorString.includes("already")) {
+                    errorMsg = "You have ALREADY checked in today. Please come back tomorrow!";
+                } else if (errorString.includes("het sach") || errorString.includes("empty")) {
+                    errorMsg = "The Reward Pool is empty!";
+                }
+            }
+
+            statusText.innerText = "❌ Error: " + errorMsg;
+            statusText.style.color = "#ff4c4c";
+            
+            Swal.fire({
+                icon: 'error',
+                title: 'FAILED ❌',
+                text: errorMsg,
+                background: '#1a1a2e', color: '#fff', confirmButtonColor: '#ff4c4c'
+            });
+        }
+    };
+</script>
+</body>
+</html>
