@@ -65,7 +65,8 @@
 </div>
 
 <script>
-    const CONTRACT_ADDRESS = "0xFaa5eA09e3c0174EbaaaE49cA04cb0DDb036ae57"; 
+    const CONTRACT_ADDRESS = "0xBe7AD855a46C786dB6a53806A357B4c1fd366991"; 
+    
     const SUPABASE_URL = "https://gqftgzlunaianfofmznt.supabase.co";
     const SUPABASE_KEY = "sb_publishable_id0qZ9sN4Ac0oM65b8BOew_NCh27YcM";
 
@@ -106,7 +107,6 @@
         }
     }
 
-    // KẾT NỐI VÍ
     btnConnect.onclick = async () => {
         if (!window.ethereum) {
             Swal.fire({ icon: 'warning', title: 'Metamask Missing', text: 'Please install Metamask extension!', background: '#1a1a2e', color: '#fff' });
@@ -155,11 +155,12 @@
             await updateBalance();
 
             const currentTime = new Date().toISOString();
-
-            const { error } = await supabaseClient.from('checkin_logs').insert([
+            statusText.innerText = "⏳ Saving record to Database...";
+            const { error: dbError } = await supabaseClient.from('checkin_logs').insert([
                 { user_address: userAddress, checkin_time: currentTime }
             ]);
-            if (error) throw error;
+            
+            if (dbError) throw dbError;
             
             statusText.innerText = "🎉 SUCCESS!";
             statusText.style.color = "#00ff88";
@@ -172,36 +173,65 @@
             });
             
         } catch (error) {
-            console.error(error);
+            console.error("Full Error Output:", error);
             btnCheckin.disabled = false; 
             
-            let errorMsg = "Transaction failed or network error!";
-            let errorString = error.reason || (error.data && error.data.message) || error.message;
+            let errorString = "";
+            if (error.reason) { errorString = error.reason; }
+            else if (error.data && error.data.message) { errorString = error.data.message; }
+            else if (error.message) { errorString = error.message; }
 
             if (error.code === 4001) {
-                errorMsg = "You rejected the transaction in Metamask.";
-            } else if (errorString) {
-                if (errorString.includes("cuoi tuan") || errorString.includes("weekend")) {
-                    errorMsg = "Check-in is NOT allowed during the weekend!";
-                } else if (errorString.includes("hom nay roi") || errorString.includes("already")) {
-                    errorMsg = "You have ALREADY checked in today. Please come back tomorrow!";
-                } else if (errorString.includes("het sach") || errorString.includes("empty")) {
-                    errorMsg = "The Reward Pool is empty!";
-                }
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Cancelled',
+                    text: 'You rejected the transaction in Metamask.',
+                    background: '#1a1a2e', color: '#fff', confirmButtonColor: '#f5a623'
+                });
+                statusText.innerText = "❌ Transaction cancelled.";
+            } 
+            else if (errorString.toLowerCase().includes("weekend") || errorString.toLowerCase().includes("cuoi tuan")) {
+               
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Access Denied ❌',
+                    text: 'Check-in is NOT allowed during the weekend!',
+                    background: '#1a1a2e', color: '#fff', confirmButtonColor: '#ff4c4c'
+                });
+                statusText.innerText = "❌ Error: Weekend restriction.";
+            } 
+            else if (errorString.toLowerCase().includes("already") || errorString.toLowerCase().includes("hom nay roi")) {
+               
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Already Checked In ❌',
+                    text: 'You have ALREADY checked in today. Please come back tomorrow!',
+                    background: '#1a1a2e', color: '#fff', confirmButtonColor: '#ff4c4c'
+                });
+                statusText.innerText = "❌ Error: Already checked in.";
+            } 
+            else if (errorString.toLowerCase().includes("het sach") || errorString.toLowerCase().includes("empty")) {
+                
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Pool Empty ❌',
+                    text: 'The Reward Pool is completely empty!',
+                    background: '#1a1a2e', color: '#fff', confirmButtonColor: '#ff4c4c'
+                });
+                statusText.innerText = "❌ Error: Pool empty.";
             }
-
-            statusText.innerText = "❌ Error: " + errorMsg;
+            else {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Transaction Failed ❌',
+                    text: 'An unknown error occurred. See console for details.',
+                    background: '#1a1a2e', color: '#fff', confirmButtonColor: '#ff4c4c'
+                });
+                statusText.innerText = "❌ Error: Transaction failed.";
+            }
             statusText.style.color = "#ff4c4c";
-            
-            Swal.fire({
-                icon: 'error',
-                title: 'FAILED ❌',
-                text: errorMsg,
-                background: '#1a1a2e', color: '#fff', confirmButtonColor: '#ff4c4c'
-            });
         }
     };
 </script>
 </body>
 </html>
-
