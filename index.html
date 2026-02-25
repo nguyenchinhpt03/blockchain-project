@@ -154,7 +154,11 @@
             await tx.wait(); 
             await updateBalance();
 
-            const { error } = await supabaseClient.from('checkin_logs').insert([{ user_address: userAddress }]);
+            const currentTime = new Date().toISOString();
+
+            const { error } = await supabaseClient.from('checkin_logs').insert([
+                { user_address: userAddress, checkin_time: currentTime }
+            ]);
             if (error) throw error;
             
             statusText.innerText = "🎉 SUCCESS!";
